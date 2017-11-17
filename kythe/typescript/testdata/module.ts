@@ -3,6 +3,7 @@
 // without an extension).
 //- Mod=vname("module", _, _, "testdata/module", _).node/kind record
 
+//- @"export" defines/binding Mod
 export var value = 3;
 
 export type MyType = string;

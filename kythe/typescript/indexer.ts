@@ -97,6 +97,8 @@ class Vistor {
    */
   rootDirs: string[];
 
+  emittedModuleAnchor: boolean = false;
+
   constructor(
       /** Corpus name for produced VNames. */
       private corpus: string, program: ts.Program,
@@ -597,6 +599,7 @@ class Vistor {
    * and that case is handled as part of the ordinary declaration handling.
    */
   visitExportDeclaration(decl: ts.ExportDeclaration) {
+    this.emitModuleAnchorForFirstExport(decl);
     if (decl.exportClause) {
       for (const exp of decl.exportClause.elements) {
         const localSym = this.getSymbolAtLocation(exp.name);
@@ -629,6 +632,9 @@ class Vistor {
     let vname: VName|undefined;
     for (const decl of stmt.declarationList.declarations) {
       vname = this.visitVariableDeclaration(decl);
+    }
+    if (ts.getCombinedModifierFlags(stmt) & ts.ModifierFlags.Export) {
+      this.emitModuleAnchorForFirstExport(stmt);
     }
     if (stmt.declarationList.declarations.length === 1 && vname !== undefined) {
       this.visitJSDoc(stmt, vname);
@@ -923,12 +929,22 @@ class Vistor {
     this.emitFact(this.kFile, 'node/kind', 'file');
     this.emitFact(this.kFile, 'text', file.text);
 
-    // Emit a "record" node, representing the module object.
-    let kMod = this.newVName('module', this.moduleName(file.fileName));
-    this.emitFact(kMod, 'node/kind', 'record');
-    this.emitEdge(this.kFile, 'childof', kMod);
-
     ts.forEachChild(file, n => this.visit(n));
+  }
+
+  emitModuleAnchorForFirstExport(node: ts.Node) {
+    // Emit metadata defining only the first export in the file to be the source of the
+    // module, so check if we've emitted the module anchor before
+    if (!this.emittedModuleAnchor) {
+      // Emit a "record" node, representing the module object.
+      let kMod = this.newVName('module', this.moduleName(node.getSourceFile().fileName));
+      this.emitFact(kMod, 'node/kind', 'record');
+      this.emitEdge(this.kFile, 'childof', kMod);
+
+      // Emit the anchor, bound to the "export" keyword
+      this.emitEdge(this.newAnchor(node.getFirstToken(node.getSourceFile())), 'defines/binding', kMod);
+      this.emittedModuleAnchor = true;
+    }
   }
 }
 
